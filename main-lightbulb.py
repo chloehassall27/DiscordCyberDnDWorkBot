@@ -1,5 +1,4 @@
 # Import the command handler
-
 import asyncio
 
 import hikari
@@ -23,16 +22,15 @@ async def ping(ctx: lightbulb.Context) -> None:
     bot.d.test = "ping"
     await ctx.respond("Pong!")
 
-@lightbulb.Check
-async def checkPermission(ctx: lightbulb.Context) -> bool:
-    guild = ctx.get_guild()
-    target = caller = guild.get_member(ctx.user)
 
-    if ctx.options.target and caller != ctx.options.target:
+@lightbulb.Check
+async def runOnOtherPlayers(ctx: lightbulb.Context) -> bool:
+    caller = ctx.member
+    target = ctx.options.target
+
+    if target and caller and caller.id != target.id:
         for role in caller.get_roles():
             if role.name == "DMs":
-                print("DM!")
-                # target = guild.get_member(ctx.options.target)
                 return True
         else:
             await ctx.respond("You do not have permission to run this command on another player.")
@@ -49,14 +47,21 @@ TASKS = {
 }
 
 
+def createUserScheduleEmbed(user: hikari.User) -> hikari.Embed:
+    return (
+        hikari.Embed(title=user.username + "'s schedule")
+            .add_field("Morning", "Field content (value)")
+            .add_field("Midday", "Field content (value)")
+            .add_field("Night", "Field content (value)")
+            .set_thumbnail(user.display_avatar_url)
+        # .set_footer("Last updated: ")
+    )
+
+
 # Register the command to the bot
 @bot.command
-@lightbulb.add_checks(checkPermission)
-# Use the command decorator to convert the function into a command
-@lightbulb.option(
-    "target", "The member whose day to start.", hikari.User, required=False
-)
-@lightbulb.command("change-schedule", "presents every player the options on what to do with their day", ephemeral=True, aliases="cs")
+@lightbulb.command("change-schedule", "Choose how to spend your time", ephemeral=True,
+                   aliases=["change-schedule", "cs"])
 # Define the command type(s) that this command implements
 @lightbulb.implements(lightbulb.SlashCommand)
 # Define the command's callback. The callback should take a single argument which will be
@@ -64,14 +69,14 @@ TASKS = {
 async def changeSchedule(ctx: lightbulb.Context) -> None:
     row = ctx.bot.rest.build_action_row()
 
-    row.add_button(hikari.ButtonStyle.PRIMARY, "morning")\
-        .set_label("Morning")\
+    row.add_button(hikari.ButtonStyle.PRIMARY, "morning") \
+        .set_label("Morning") \
         .add_to_container()
-    row.add_button(hikari.ButtonStyle.PRIMARY, "noon")\
-        .set_label("Noon")\
+    row.add_button(hikari.ButtonStyle.PRIMARY, "noon") \
+        .set_label("Noon") \
         .add_to_container()
-    row.add_button(hikari.ButtonStyle.PRIMARY, "night")\
-        .set_label("Night")\
+    row.add_button(hikari.ButtonStyle.PRIMARY, "night") \
+        .set_label("Night") \
         .add_to_container()
 
     resp = await ctx.respond(
@@ -128,9 +133,11 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
             await msg.edit("The menu timed out :c", components=[])
         else:
             activity = event.interaction.values[0]
-            player_choice = {"user_id": event.interaction.user.id, "username": event.interaction.user.username, "period": time, "activity": activity,
+            player_choice = {"user_id": event.interaction.user.id, "username": event.interaction.user.username,
+                             "period": time, "activity": activity,
                              "timestamp": event.interaction.created_at}
-            bot.d.current_actions.replace_one({"user_id": event.interaction.user.id, "period": time}, player_choice, upsert=True)
+            bot.d.current_actions.replace_one({"user_id": event.interaction.user.id, "period": time}, player_choice,
+                                              upsert=True)
 
             activity = activity.replace("_", " ")
 
@@ -138,6 +145,24 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
                 hikari.ResponseType.MESSAGE_UPDATE,
                 f"You will {activity} in the " + time + "! :3", components=[]
             )
+
+
+# Register the command to the bot
+@bot.command
+@lightbulb.add_checks(runOnOtherPlayers)
+# Use the command decorator to convert the function into a command
+@lightbulb.option(
+    "target", "The member whose schedule to view", hikari.User, required=False
+)
+@lightbulb.command("view-schedule", "View your current schedule", ephemeral=True,
+                   aliases=["view-schedule", "vs"])
+# Define the command type(s) that this command implements
+@lightbulb.implements(lightbulb.SlashCommand)
+# Define the command's callback. The callback should take a single argument which will be
+# an instance of a subclass of lightbulb.context.Context when passed in
+async def viewSchedule(ctx: lightbulb.Context) -> None:
+    target = ctx.options.target or ctx.user
+    await ctx.respond(createUserScheduleEmbed(target))
 
 
 @bot.listen()
