@@ -3,10 +3,10 @@ import asyncio
 import hikari
 import lightbulb
 
-from permissions import runOnOtherPlayers
+from util.permissions import runOnOtherPlayers
 
 plugin = lightbulb.Plugin("Schedules")
-bot = lightbulb.BotApp
+bot: lightbulb.BotApp
 
 TASKS = {
     "Work Job": "works job (+${player.job.income})",  # work_job
@@ -48,7 +48,7 @@ def createUserScheduleEmbed(user: hikari.User, updated=False) -> hikari.Embed:
     )
 
     if updated:
-        footer = embed.set_footer("(updated)") \
+        embed.set_footer("(updated)") \
             .color = hikari.Color.from_rgb(0, 255, 0)
 
     return embed
@@ -59,7 +59,6 @@ def createUserScheduleEmbed(user: hikari.User, updated=False) -> hikari.Embed:
 @lightbulb.implements(lightbulb.SlashCommand)
 async def changeSchedule(ctx: lightbulb.Context) -> None:
     row = ctx.bot.rest.build_action_row()
-
     row.add_button(hikari.ButtonStyle.PRIMARY, "morning") \
         .set_label("Morning") \
         .add_to_container()

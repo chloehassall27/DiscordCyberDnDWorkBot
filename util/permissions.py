@@ -1,5 +1,7 @@
 import lightbulb
 
+plugin = lightbulb.Plugin("Schedules")
+bot = lightbulb.BotApp
 
 @lightbulb.Check
 async def runOnOtherPlayers(ctx: lightbulb.Context) -> bool:
