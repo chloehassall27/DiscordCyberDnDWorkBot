@@ -1,5 +1,6 @@
 import lightbulb
 
+
 @lightbulb.Check
 async def runOnOtherPlayers(ctx: lightbulb.Context) -> bool:
     caller = ctx.member
@@ -14,3 +15,13 @@ async def runOnOtherPlayers(ctx: lightbulb.Context) -> bool:
             return False
 
     return True
+
+
+@lightbulb.Check
+async def dmOnly(ctx: lightbulb.Context) -> bool:
+    for role in ctx.member.get_roles():
+        if role.name == "DMs":
+            return True
+    else:
+        await ctx.respond("You do not have permission to run this command.")
+        return False
