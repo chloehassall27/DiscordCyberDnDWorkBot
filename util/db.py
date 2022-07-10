@@ -2,20 +2,13 @@ import hikari
 import lightbulb
 
 from multipledispatch import dispatch
+# from app import bot
 
 bot: lightbulb.BotApp
 
-# @dispatch(hikari.Member)
+
 def findPlayerEntry(member: hikari.Member):
     return bot.d.players.find_one({"user_id": member.id})
-
-# @dispatch(hikari.Member)
-# def findPlayerValue(member: hikari.Member, key: str):
-#     return findPlayerEntry(member).get(key)
-
-# @dispatch(hikari.Member)
-# def findPlayerEntry(member: hikari.Member) -> :
-#     return bot.d.players.find_one({"user_id": member.id})
 
 
 @dispatch(hikari.Member)

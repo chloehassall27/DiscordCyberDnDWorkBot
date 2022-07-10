@@ -2,11 +2,13 @@ import hikari
 import lightbulb
 
 from api.unb import getMoney
+from util.config import config
 from util.db import updatePlayerEntry, findPlayerEntry
 from util.permissions import runOnOtherPlayers
 
 plugin = lightbulb.Plugin("Stats")
-bot: lightbulb.BotApp
+
+currencySymbol = config.get('currencySymbol')
 
 
 def createUserStatsEmbed(member: hikari.Member) -> hikari.Embed:
@@ -16,17 +18,26 @@ def createUserStatsEmbed(member: hikari.Member) -> hikari.Embed:
 
     money = getMoney(member.id, member.guild_id)
     job = player.get('job') or {}
-    name = job.get('name') or "Bum"
-    desc = job.get('description') or ""
+    job_name = job.get('name') or "Bum"
+    job_desc = (job.get('description') + '\n') if job.get('description') else ""
     income = job.get('income') or 0
+    tp = player.get('tech_points') or 0
+    fp = player.get('feature_points') or 0
+    exhaustion = player.get('exhaustion') or 0
 
-    return (
+    embed = (
         hikari.Embed(title=member.display_name + "'s stats")
-        .add_field("Money", money)
-        .add_field(name, desc + "\nIncome: $" + str(income))
-        # .add_field("Night", night)
-        .set_thumbnail(member.display_avatar_url)
+            .add_field("Money: ", currencySymbol + str(money))
+            .add_field("Job: " + job_name, job_desc + "Income: " + currencySymbol + str(income))
+            .add_field("Tech Points: ", str(tp))
+            .add_field("Feature Points: ", str(fp))
+            .set_thumbnail(member.display_avatar_url)
     )
+
+    if exhaustion:
+        embed.add_field("Exhaustion: ", str(exhaustion)).color(hikari.Color.from_rgb(255, 0, 0))
+
+    return embed
 
 
 @plugin.command
@@ -44,7 +55,5 @@ async def stats(ctx: lightbulb.Context) -> None:
     await ctx.respond(createUserStatsEmbed(target))
 
 
-def load(bot_: lightbulb.BotApp) -> None:
-    bot_.add_plugin(plugin)
-    global bot
-    bot = plugin.bot
+def load(bot: lightbulb.BotApp) -> None:
+    bot.add_plugin(plugin)

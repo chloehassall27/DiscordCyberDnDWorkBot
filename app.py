@@ -1,5 +1,3 @@
-# Import the command handler
-
 import os
 
 import dotenv
@@ -22,6 +20,7 @@ async def on_starting(event: hikari.StartingEvent) -> None:
     bot.d.players = bot.d.db["players"]
     bot.d.logs = bot.d.db["logs"]
     initDbHelper(bot)
+    bot.load_extensions_from("./plugins/", must_exist=True)
 
 
 @bot.listen()
@@ -29,8 +28,9 @@ async def on_stopping(event: hikari.StoppingEvent) -> None:
     await bot.d.mongoClient.close()
 
 
-bot.load_extensions_from("./plugins/", must_exist=True)
+
 # Run the bot
 # Note that this is blocking meaning no code after this line will run
 # until the bot is shut off
-bot.run()
+if __name__ == "__main__":
+    bot.run()

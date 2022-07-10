@@ -31,7 +31,7 @@ def verifyUserActionChange(member: hikari.Member, activity: str, period: str) ->
     return None
 
 
-def createUserScheduleEmbed(user: hikari.User, updated=False) -> hikari.Embed:
+def createUserScheduleEmbed(user: hikari.Member, updated=False) -> hikari.Embed:
     res = bot.d.current_actions.find_one({"user_id": user.id, "period": "morning"})
     morning = ((res and res['activity']) or "nothing").replace("_", " ").capitalize()
     res = bot.d.current_actions.find_one({"user_id": user.id, "period": "noon"})
@@ -69,7 +69,7 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
         .set_label("Night") \
         .add_to_container()
 
-    sched = createUserScheduleEmbed(ctx.user)
+    sched = createUserScheduleEmbed(ctx.member)
     sched_response = await ctx.respond(sched)
 
     resp = await ctx.respond(
@@ -138,7 +138,7 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
                 )
                 return
 
-            player_choice = {"user_id": event.interaction.user.id, "username": event.interaction.user.username,
+            player_choice = {"user_id": event.interaction.member.id, "username": event.interaction.member.username,
                              "period": time, "activity": activity,
                              "timestamp": event.interaction.created_at}
             bot.d.current_actions.replace_one({"user_id": event.interaction.user.id, "period": time}, player_choice,
@@ -154,7 +154,7 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
             )
 
             # sched = createUserScheduleEmbed(ctx.user)
-            await sched_response.edit(createUserScheduleEmbed(ctx.user, True))
+            await sched_response.edit(createUserScheduleEmbed(ctx.member, True))
 
 
 @plugin.command
@@ -163,7 +163,7 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
 @lightbulb.command("view-schedule", "View your current schedule", ephemeral=True)
 @lightbulb.implements(lightbulb.SlashCommand)
 async def viewSchedule(ctx: lightbulb.Context) -> None:
-    target = ctx.options.target or ctx.user
+    target = ctx.options.target or ctx.member
     await ctx.respond(createUserScheduleEmbed(target))
 
 
