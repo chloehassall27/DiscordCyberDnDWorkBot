@@ -1,30 +1,93 @@
 import asyncio
+from collections import Counter
+from datetime import datetime
 
 import hikari
 import lightbulb
+from bson import Decimal128
+from multipledispatch import dispatch
+from pytz import timezone
 
-from util.permissions import runOnOtherPlayers
+from plugins.jobs import workJob
+from plugins.playerstats import createUserStatsEmbed, chargeCOL
+from util.db import updatePlayerEntry
+from util.permissions import runOnOtherPlayers, dmOnly
 
 plugin = lightbulb.Plugin("Schedules")
 bot: lightbulb.BotApp
 
 TASKS = {
     "Work Job": "works job (+${player.job.income})",  # work_job
-    "Practice Skill": "skills take time (+{player.skill.currentIncrement}SP)",  # practice_skill
+    "Practice Feature": "skills take time (+{player.feat.increment}FP)",  # practice_skill
+    "Practice Tech": "tech takes time (+{player.tech.increment}TP)",  # practice_tech
     "Human Maintenance": "eat, sleep, you know, whatever normal people do (-${player.maintenanceCost})",  # human_maintenance
-    "Perform an Upgrade": "some upgrades take time to install new hardware/software and test for issues"  # perform_an_upgrade
+    # "Perform an Upgrade": "some upgrades take time to install new hardware/software and test for issues"  # perform_an_upgrade
 }
 
 
-def verifyUserActionChange(member: hikari.Member, activity: str, period: str) -> str | None:
-    res = bot.d.current_actions.find_one({"user_id": member.id, "activity": activity})
-    if not res:
-        return None
+def isAI(member: hikari.Member) -> bool:
+    return any(role for role in member.get_roles() if role.name == "AI")
 
-    if activity == "human_maintenance" and any(role for role in member.get_roles() if role.name == "AI"):
+
+@dispatch(hikari.Guild)
+def performDayUpdate(guild: hikari.Guild):
+    members = guild.get_members().values()
+    for member in members:
+        if any(role for role in member.get_roles() if role.name == "Players"):
+            performDayUpdate(member)
+
+
+@dispatch(hikari.Member)
+def performDayUpdate(member: hikari.Member):
+    player = updatePlayerEntry(member)
+    player_actions = bot.d.current_actions.find_one({"user_id": member.id})
+    activities_list = []
+
+    for period_name in ['morning', 'noon', 'night']:
+        period = player_actions.get(period_name)
+        if period:
+            activities_list.append(period.get('activity'))
+
+    activities = Counter(activities_list)
+    changes_inc = {}
+    changes_set = {}
+
+    # Work job first so that human maintenance has best chance to happen
+    count = activities.get('work_job')
+    if count:
+        workJob(member, count)
+
+    if not isAI(member):
+        count = activities.get('human_maintenance')
+        exhaustion = player.get("exhaustion", 0) - count + 1  # Each day, 1 exhaustion is added
+        if exhaustion < 0:
+            exhaustion = 0
+        changes_set["exhaustion"] = exhaustion
+
+    count = activities.get('practice_feature')
+    if count:
+        changes_inc["feat.points"] = Decimal128(str(player.get('feat').get('increment').to_decimal() * count))
+
+    count = activities.get('practice_tech')
+    if count:
+        changes_inc["tech.points"] = Decimal128(str(player.get('tech').get('increment').to_decimal() * count))
+    # elif activity == 'perform_an_upgrade':
+
+    updatePlayerEntry(member, {"last_day_update": str(datetime.now(timezone('America/New_York')))} | changes_set, changes_inc)
+
+    if not chargeCOL(member):
+        member.send("You have run out of money and were unable to complete your human maintenance period(s). Your exhaustion has gone up and is now at: " + str(exhaustion))
+
+
+def verifyUserActionChange(member: hikari.Member, activity: str, period: str) -> str | None:
+    # res = bot.d.current_actions.find_one({"user_id": member.id})
+    # if not res:
+    #     return None
+
+    if activity == "human_maintenance" and (any(role for role in member.get_roles() if role.name == "AI")):
         return "AI cannot perform human maintenance"
-    elif activity == "human_maintenance" and res['activity'] == activity and res['period'] != period:
-        return "Cannot perform human maintenance twice in same day"
+    # elif activity == "human_maintenance" and res['activity'] == activity and res['period'] != period:
+    #     return "Cannot perform human maintenance twice in same day"
     # elif(activity == "work_job" and res.activity is activity and res.period is not period):
     #     return "Cannot work job twice in same day"
 
@@ -32,19 +95,17 @@ def verifyUserActionChange(member: hikari.Member, activity: str, period: str) ->
 
 
 def createUserScheduleEmbed(user: hikari.Member, updated=False) -> hikari.Embed:
-    res = bot.d.current_actions.find_one({"user_id": user.id, "period": "morning"})
-    morning = ((res and res['activity']) or "nothing").replace("_", " ").capitalize()
-    res = bot.d.current_actions.find_one({"user_id": user.id, "period": "noon"})
-    noon = ((res and res['activity']) or "nothing").replace("_", " ").capitalize()
-    res = bot.d.current_actions.find_one({"user_id": user.id, "period": "night"})
-    night = ((res and res['activity']) or "nothing").replace("_", " ").capitalize()
+    res = bot.d.current_actions.find_one({"user_id": user.id}) or {}
+    morning = (res.get("morning", {}).get("activity") or "nothing").replace("_", " ").capitalize()
+    noon = (res.get("noon", {}).get("activity") or "nothing").replace("_", " ").capitalize()
+    night = (res.get("night", {}).get("activity") or "nothing").replace("_", " ").capitalize()
 
     embed = (
         hikari.Embed(title=user.display_name + "'s schedule")
-        .add_field("Morning", morning)
-        .add_field("Midday", noon)
-        .add_field("Night", night)
-        .set_thumbnail(user.display_avatar_url)
+            .add_field("Morning", morning)
+            .add_field("Midday", noon)
+            .add_field("Night", night)
+            .set_thumbnail(user.display_avatar_url)
     )
 
     if updated:
@@ -52,6 +113,22 @@ def createUserScheduleEmbed(user: hikari.Member, updated=False) -> hikari.Embed:
             .color = hikari.Color.from_rgb(0, 255, 0)
 
     return embed
+
+
+@plugin.command
+@lightbulb.add_checks(dmOnly)
+@lightbulb.option("player", "Name of a specific player to cause a new day for", hikari.Member, required=False)
+@lightbulb.command("execute-day", "Update players' stats")
+@lightbulb.implements(lightbulb.SlashCommand)
+async def executeSchedule(ctx: lightbulb.Context) -> None:
+    player = ctx.raw_options.get('player')
+    performDayUpdate(player)
+    if ctx.raw_options.get('player'):
+        embed = createUserStatsEmbed(player)
+        await ctx.respond(player.display_name + "'s day has been executed!", embed=embed,
+                          flags=hikari.MessageFlag.EPHEMERAL)
+    else:
+        await ctx.respond("A new day is upon us!")
 
 
 @plugin.command
@@ -138,11 +215,13 @@ async def changeSchedule(ctx: lightbulb.Context) -> None:
                 )
                 return
 
-            player_choice = {"user_id": event.interaction.member.id, "username": event.interaction.member.username,
-                             "period": time, "activity": activity,
-                             "timestamp": event.interaction.created_at}
-            bot.d.current_actions.replace_one({"user_id": event.interaction.user.id, "period": time}, player_choice,
-                                              upsert=True)
+            player_choice = {
+                "user_id": event.interaction.member.id,
+                "username": event.interaction.member.username,
+                time + ".activity": activity,
+                time + ".timestamp": str(datetime.now(timezone('America/New_York')))
+            }
+            bot.d.current_actions.update_one({"user_id": event.interaction.user.id}, {"$set": player_choice}, upsert=True)
 
             activity = activity.replace("_", " ")
 
