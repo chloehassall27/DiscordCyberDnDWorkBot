@@ -1,19 +1,23 @@
 import os
 
 import dotenv
-import hikari
 import lightbulb
 import pymongo
+from hikari import StartingEvent, StoppingEvent, Intents
 
 from util.db import initDbHelper
 
 dotenv.load_dotenv()
+intents = (
+    Intents.ALL_UNPRIVILEGED |
+    Intents.GUILD_MEMBERS
+)
 # Instantiate a Bot instance
-bot = lightbulb.BotApp(token=os.getenv('DISCORD_TOKEN'))
+bot = lightbulb.BotApp(token=os.getenv('DISCORD_TOKEN'), intents=intents)
 
 
 @bot.listen()
-async def on_starting(event: hikari.StartingEvent) -> None:
+async def on_starting(event: StartingEvent) -> None:
     bot.d.mongoClient = pymongo.MongoClient("mongodb://localhost:27017/")
     bot.d.db = bot.d.mongoClient["originalServer"]
     bot.d.current_actions = bot.d.db["currentActions"]
@@ -24,7 +28,7 @@ async def on_starting(event: hikari.StartingEvent) -> None:
 
 
 @bot.listen()
-async def on_stopping(event: hikari.StoppingEvent) -> None:
+async def on_stopping(event: StoppingEvent) -> None:
     await bot.d.mongoClient.close()
 
 

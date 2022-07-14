@@ -5,7 +5,7 @@ import lightbulb
 from bson import Decimal128
 from multipledispatch import dispatch
 
-from plugins.schedules import isAI
+from util.playerchecks import isAI, isPlayer
 
 bot: lightbulb.BotApp
 
@@ -14,9 +14,6 @@ defaultTPIncrement = Decimal(".125")
 defaultHumanCOL = 75
 defaultAICOL = 100
 
-
-def isPlayer(member: hikari.Member) -> bool:
-    return any(role for role in member.get_roles() if role.name == "Players")
 
 # def getPlayerEntry(member: hikari.Member):
 #     return bot.d.players.find_one({"user_id": member.id})

@@ -12,6 +12,7 @@ from plugins.jobs import workJob
 from plugins.playerstats import createUserStatsEmbed, chargeCOL
 from util.db import updatePlayerEntry
 from util.permissions import runOnOtherPlayers, dmOnly
+from util.playerchecks import isAI
 
 plugin = lightbulb.Plugin("Schedules")
 bot: lightbulb.BotApp
@@ -25,23 +26,20 @@ TASKS = {
 }
 
 
-def isAI(member: hikari.Member) -> bool:
-    return any(role for role in member.get_roles() if role.name == "AI")
-
-
 @dispatch(hikari.Guild)
-def performDayUpdate(guild: hikari.Guild):
+async def performDayUpdate(guild: hikari.Guild):
     members = guild.get_members().values()
     for member in members:
         if any(role for role in member.get_roles() if role.name == "Players"):
-            performDayUpdate(member)
+            await performDayUpdate(member)
 
 
 @dispatch(hikari.Member)
-def performDayUpdate(member: hikari.Member):
+async def performDayUpdate(member: hikari.Member):
     player = updatePlayerEntry(member)
-    player_actions = bot.d.current_actions.find_one({"user_id": member.id})
+    player_actions = bot.d.current_actions.find_one({"user_id": member.id}) or {}
     activities_list = []
+
 
     for period_name in ['morning', 'noon', 'night']:
         period = player_actions.get(period_name)
@@ -49,34 +47,46 @@ def performDayUpdate(member: hikari.Member):
             activities_list.append(period.get('activity'))
 
     activities = Counter(activities_list)
+    exhaustion = player.get("exhaustion", 0)
     changes_inc = {}
     changes_set = {}
 
-    # Work job first so that human maintenance has best chance to happen
-    count = activities.get('work_job')
-    if count:
-        workJob(member, count)
+    # Work job first so that COL has best chance to be paid
+    job_count = activities.get('work_job')
+    if job_count:
+        if isAI(member) and exhaustion >= 1:
+            workJob(member)
+        else:
+            workJob(member, job_count)
 
-    if not isAI(member):
-        count = activities.get('human_maintenance')
-        exhaustion = player.get("exhaustion", 0) - count + 1  # Each day, 1 exhaustion is added
+    col_paid = chargeCOL(member)
+    if isAI(member):
+        if not col_paid:
+            changes_inc["exhaustion"] = 1
+            await member.send("You have run out of money. Your computing time will be cut by 2/3 and only your job activity will be performed until you can pay your fees. ")
+            updatePlayerEntry(member, {"last_day_update": str(datetime.now(timezone('America/New_York')))} | changes_set, changes_inc)
+            return
+        else:
+            changes_set["exhaustion"] = 0
+    else:
+        maint_count = activities.get('human_maintenance')
+        exhaustion = exhaustion - (0 if not col_paid else maint_count) + 1  # Each day, 1 exhaustion is added
         if exhaustion < 0:
             exhaustion = 0
+        if not col_paid:
+            await member.send("You have run out of money and were unable to complete your human maintenance period(s). Your exhaustion has gone up and is now at: " + str(exhaustion))
         changes_set["exhaustion"] = exhaustion
 
-    count = activities.get('practice_feature')
-    if count:
-        changes_inc["feat.points"] = Decimal128(str(player.get('feat').get('increment').to_decimal() * count))
+    feat_count = activities.get('practice_feature')
+    if feat_count:
+        changes_inc["feat.points"] = Decimal128(str(player.get('feat').get('increment').to_decimal() * feat_count))
 
-    count = activities.get('practice_tech')
-    if count:
-        changes_inc["tech.points"] = Decimal128(str(player.get('tech').get('increment').to_decimal() * count))
+    tech_count = activities.get('practice_tech')
+    if tech_count:
+        changes_inc["tech.points"] = Decimal128(str(player.get('tech').get('increment').to_decimal() * tech_count))
     # elif activity == 'perform_an_upgrade':
 
     updatePlayerEntry(member, {"last_day_update": str(datetime.now(timezone('America/New_York')))} | changes_set, changes_inc)
-
-    if not chargeCOL(member):
-        member.send("You have run out of money and were unable to complete your human maintenance period(s). Your exhaustion has gone up and is now at: " + str(exhaustion))
 
 
 def verifyUserActionChange(member: hikari.Member, activity: str, period: str) -> str | None:
@@ -84,7 +94,7 @@ def verifyUserActionChange(member: hikari.Member, activity: str, period: str) ->
     # if not res:
     #     return None
 
-    if activity == "human_maintenance" and (any(role for role in member.get_roles() if role.name == "AI")):
+    if activity == "human_maintenance" and isAI(member):
         return "AI cannot perform human maintenance"
     # elif activity == "human_maintenance" and res['activity'] == activity and res['period'] != period:
     #     return "Cannot perform human maintenance twice in same day"
@@ -122,7 +132,7 @@ def createUserScheduleEmbed(user: hikari.Member, updated=False) -> hikari.Embed:
 @lightbulb.implements(lightbulb.SlashCommand)
 async def executeSchedule(ctx: lightbulb.Context) -> None:
     player = ctx.raw_options.get('player')
-    performDayUpdate(player)
+    await performDayUpdate(player or ctx.get_guild())
     if ctx.raw_options.get('player'):
         embed = createUserStatsEmbed(player)
         await ctx.respond(player.display_name + "'s day has been executed!", embed=embed,

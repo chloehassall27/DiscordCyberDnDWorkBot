@@ -53,7 +53,7 @@ def createUserStatsEmbed(member: hikari.Member) -> hikari.Embed:
     )
 
     if exhaustion:
-        embed.add_field("Exhaustion: ", str(exhaustion)).color(hikari.Color.from_rgb(255, 0, 0))
+        embed.add_field("Exhaustion: ", str(exhaustion)).color = hikari.Color.from_rgb(255, 0, 0)
 
     return embed
 

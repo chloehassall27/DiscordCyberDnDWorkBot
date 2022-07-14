@@ -1,15 +1,17 @@
-schedule qol improvement - button on confirmation that allows user to change schedule again
+change-schedule qol improvement - button on confirmation that allows user to change schedule again
 
-/day - calculate/give day so we can have session where multiple days happen in one, won't give money/stuff at end of day, option for which period to calculate
+! /day - calculate/give day so we can have session where multiple days happen in one, won't give money/stuff at end of day, option for which period to calculate
 
 /pause /unpause
 
 /session - force players to not execute schedules for certain periods
 
-jobs have probability of success
+! jobs have probability of success
 
-human maintainence - exhaustion (warning, has to be made up eventually ex missing this for 3 days means you'd have to sleep twice a day for 3 days)
+! human maintainence - exhaustion (warning, has to be made up eventually ex missing this for 3 days means you'd have to sleep twice a day for 3 days)
 
-AI COL (scales)
+exhaustion warning on schedule change
 
-TP/FP (decimal values) 1 session = 1/8 TP, 1/10 FP
+! AI COL (scales)
+
+! TP/FP (decimal values) 1 session = 1/8 TP, 1/10 FP
